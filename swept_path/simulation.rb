@@ -34,7 +34,7 @@ module Swept
     attr_accessor :step_m, :ghost_spacing_m,
                   :show_body_traces, :show_wheel_tracks, :show_ghosts,
                   :show_projection_fwd, :show_projection_rev,
-                  :project_mode, :project_distance_m, :project_steps
+                  :project_distance_m
     attr_reader :frames, :dist_m, :steer_deg, :placed, :vehicle, :preset_key
 
     def initialize
@@ -49,9 +49,7 @@ module Swept
       @show_ghosts = true
       @show_projection_fwd = true
       @show_projection_rev = false
-      @project_mode = :distance # :distance or :steps
       @project_distance_m = 8.0
-      @project_steps = 10
       @frames = []
       @dist_m = 0.0
       @placed = false
@@ -132,6 +130,7 @@ module Swept
       return unless @placed
 
       steer = @steer_deg * DEG
+      ds = ds.to_f
       n = [(ds.abs / SUBSTEP_M).ceil, 1].max
       inc = ds / n
       n.times do
@@ -145,7 +144,7 @@ module Swept
 
     # How far ahead the projection reaches, in metres.
     def projection_distance
-      @project_mode == :steps ? (@project_steps * @step_m) : @project_distance_m
+      @project_distance_m
     end
 
     # Simulate from the CURRENT pose at the CURRENT steering angle for the
@@ -190,8 +189,7 @@ module Swept
         units: @vehicle.units.size,
         project_fwd: @show_projection_fwd,
         project_rev: @show_projection_rev,
-        project_mode: @project_mode.to_s,
-        project_value: (@project_mode == :steps ? @project_steps : @project_distance_m),
+        project_distance_m: @project_distance_m,
         projection_len_m: round2(projection_distance)
       }
     end
@@ -208,6 +206,9 @@ module Swept
       draw_traces(view)
       draw_projection(view)
       draw_ghosts(view)
+      # Point the steered wheels at the current angle so they track live steering
+      # even before the vehicle has been driven.
+      @vehicle.display_steer = @steer_deg * DEG
       draw_vehicle(view, @vehicle.footprint, Z_BODY, true)
     end
 

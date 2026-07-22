@@ -197,6 +197,13 @@ module Swept
       end
     end
 
+    # Set the front-wheel angle shown when the vehicle is drawn but not moving,
+    # so the steered wheels track the current steering angle live. Ignored by
+    # towed units, which have no steered axle.
+    def display_steer=(rad)
+      @last_steer = clamp(rad, -@max_steer, @max_steer)
+    end
+
     # Advance a towed unit given the hitch's motion (old -> new world points).
     def step_towed(old_hitch, new_hitch)
       dh = [new_hitch[0] - old_hitch[0], new_hitch[1] - old_hitch[1]]
@@ -275,6 +282,11 @@ module Swept
 
     def max_steer
       lead.max_steer
+    end
+
+    # Show the lead unit's steered wheels at this angle (radians) when drawn.
+    def display_steer=(rad)
+      lead.display_steer = rad
     end
 
     def wheelbase

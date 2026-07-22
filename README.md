@@ -31,7 +31,7 @@ geometry, intersection, roundabout, and parking-layout checks.
 - **Live projection preview** — preview of the swept envelope and wheel
   tracks the vehicle *would* follow at its current steering angle, shown before
   you commit. Toggle **forward** and **reverse** projections independently, and
-  set the reach by either **distance** or **number of steps**.
+  set the reach **distance** in metres.
 - **Interactive control** three ways: arrow keys in the model, the HTML control
   panel, or an interactive click-to-place / click-to-aim setup.
 - **Live readout**: distance travelled, current turn radius, and swept width.
@@ -92,7 +92,7 @@ Requires SketchUp 2017 or newer (uses the `UI::HtmlDialog` API).
    steering slider and a step-size field.
 5. Use the **Projection** section to preview where the current
    steering angle would take the vehicle — turn **Forward** and/or **Reverse**
-   projection on, and set the reach by **Distance** or **Steps**. It updates live
+   projection on, and set the reach **Distance** in metres. It updates live
    as you steer, so you can aim a maneuver before driving it.
 6. Toggle **body envelope / wheel tracks / ghost footprints** and adjust ghost
    spacing in the *Visualization* section. (These toggles also govern which parts

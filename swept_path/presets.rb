@@ -27,6 +27,14 @@ module Swept
   module Presets
     LIST = [
       {
+        key: 'FORD_TRANSIT_350_XLT',
+        name: 'Ford Transit 350 XLT',
+        units: [
+          { kind: :lead, wheelbase: 3.81, front_overhang: 1.0080625, rear_overhang: 1.2017375,
+            width: 2.0621625, min_turn_radius: 6.1 }
+        ]
+      },
+      {
         key: 'P',
         name: 'Passenger car (P)',
         units: [

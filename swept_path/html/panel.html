@@ -6,9 +6,9 @@
 <title>Vehicle Swept Path</title>
 <style>
   :root {
-    --bg: #1e1f22; --panel: #2a2c30; --line: #3a3d42;
-    --fg: #e8eaed; --muted: #9aa0a6; --accent: #2f9bff; --accent2: #ff8c00;
-    --ok: #27ae60; --warn: #e74c3c;
+    --bg: #f4f5f7; --panel: #ffffff; --line: #d7dae0;
+    --fg: #1f2328; --muted: #656b73; --accent: #2f9bff; --accent2: #ff8c00;
+    --ok: #1e9e54; --warn: #d64535;
   }
   * { box-sizing: border-box; }
   body {
@@ -26,22 +26,23 @@
   }
   label { display: block; color: var(--muted); font-size: 11px; margin: 6px 0 2px; }
   select, input[type=number] {
-    width: 100%; background: #17181b; color: var(--fg);
+    width: 100%; background: #ffffff; color: var(--fg);
     border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; font-size: 13px;
   }
   input[type=range] { width: 100%; }
   .row { display: flex; gap: 8px; }
   .row > * { flex: 1; }
   button {
-    background: #34373c; color: var(--fg); border: 1px solid var(--line);
+    background: #eceef1; color: var(--fg); border: 1px solid var(--line);
     border-radius: 6px; padding: 8px 6px; font-size: 13px; cursor: pointer;
     transition: background .12s; width: 100%;
   }
-  button:hover { background: #40444a; }
-  button:active { background: #4a4f56; }
+  button:hover { background: #e1e4e8; }
+  button:active { background: #d4d8de; }
   button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-  button.primary:hover { filter: brightness(1.08); }
-  button.warn { background: #3a2626; border-color: #5a3030; }
+  button.primary:hover { filter: brightness(1.05); }
+  button.warn { background: #fdecec; border-color: #f1c4c4; color: var(--warn); }
+  button.warn:hover { background: #fbdcdc; }
   .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
   .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
   .steer-val { text-align: center; font-variant-numeric: tabular-nums;
@@ -95,9 +96,9 @@
       <span class="hint">(max ±<span id="steerMax">0</span>°)</span></div>
     <input type="range" id="steer" min="-45" max="45" step="0.5" value="0">
     <div class="grid3" style="margin-top:8px">
-      <button data-steer="-2">◀ Left</button>
+      <button data-steer="2">◀ Left</button>
       <button data-steer="center">Center</button>
-      <button data-steer="2">Right ▶</button>
+      <button data-steer="-2">Right ▶</button>
     </div>
   </div>
 
@@ -120,19 +121,8 @@
       <label><input type="checkbox" id="projRev">
         <span style="color:#e65ac8">■</span> Reverse projection</label>
     </div>
-    <div class="row" style="margin-top:6px">
-      <div>
-        <label>Project by</label>
-        <select id="projMode">
-          <option value="distance">Distance</option>
-          <option value="steps">Steps</option>
-        </select>
-      </div>
-      <div>
-        <label id="projValLabel">Distance (m)</label>
-        <input type="number" id="projVal" min="0.1" step="0.5" value="8">
-      </div>
-    </div>
+    <label style="margin-top:6px">Distance (m)</label>
+    <input type="number" id="projVal" min="0.1" step="0.5" value="8">
     <div class="hint">Preview of where the vehicle would sweep at the
       current steering angle — reach ≈ <span id="projReach">8</span> m.</div>
   </div>
@@ -191,7 +181,8 @@
       document.getElementById('preset').value = s.preset_key;
       document.getElementById('steer').min = -s.max_steer_deg;
       document.getElementById('steer').max = s.max_steer_deg;
-      document.getElementById('steer').value = s.steer_deg;
+      // Slider axis is reversed so the LEFT end steers left (positive steer).
+      document.getElementById('steer').value = -s.steer_deg;
       document.getElementById('steerVal').textContent = s.steer_deg.toFixed(1);
       document.getElementById('steerMax').textContent = s.max_steer_deg.toFixed(0);
       document.getElementById('step').value = s.step_m;
@@ -204,10 +195,7 @@
 
       document.getElementById('projFwd').checked = s.project_fwd;
       document.getElementById('projRev').checked = s.project_rev;
-      document.getElementById('projMode').value = s.project_mode;
-      document.getElementById('projVal').value = s.project_value;
-      document.getElementById('projValLabel').textContent =
-        (s.project_mode === 'steps') ? 'Steps' : 'Distance (m)';
+      setNum('projVal', s.project_distance_m);
       document.getElementById('projReach').textContent = s.projection_len_m.toFixed(1);
 
       if (s.lead) {
@@ -246,8 +234,10 @@
   });
 
   document.getElementById('steer').addEventListener('input', function () {
-    document.getElementById('steerVal').textContent = parseFloat(this.value).toFixed(1);
-    s('set_steer', this.value);
+    // Reversed axis: slider left = left turn (positive steer).
+    var steer = -parseFloat(this.value);
+    document.getElementById('steerVal').textContent = steer.toFixed(1);
+    s('set_steer', steer);
   });
   document.querySelectorAll('[data-steer]').forEach(function (b) {
     b.addEventListener('click', function () {
@@ -273,17 +263,13 @@
   });
 
   function pushProjection() {
-    var mode = document.getElementById('projMode').value;
-    document.getElementById('projValLabel').textContent =
-      (mode === 'steps') ? 'Steps' : 'Distance (m)';
     s('set_projection', JSON.stringify({
       fwd: document.getElementById('projFwd').checked,
       rev: document.getElementById('projRev').checked,
-      mode: mode,
       value: document.getElementById('projVal').value
     }));
   }
-  ['projFwd', 'projRev', 'projMode', 'projVal'].forEach(function (id) {
+  ['projFwd', 'projRev', 'projVal'].forEach(function (id) {
     document.getElementById(id).addEventListener('change', pushProjection);
   });
 

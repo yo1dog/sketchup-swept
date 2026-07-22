@@ -82,12 +82,7 @@ module Swept
         o = JSON.parse(json)
         App.sim.show_projection_fwd = o['fwd']
         App.sim.show_projection_rev = o['rev']
-        App.sim.project_mode = (o['mode'] == 'steps' ? :steps : :distance)
-        if App.sim.project_mode == :steps
-          App.sim.project_steps = [o['value'].to_i, 1].max
-        else
-          App.sim.project_distance_m = [o['value'].to_f, 0.1].max
-        end
+        App.sim.project_distance_m = [o['value'].to_f, 0.1].max
         push_status(dlg)
         invalidate
       end
