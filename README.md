@@ -1,3 +1,6 @@
+# AI Generated
+-----
+
 # Vehicle Swept Path — SketchUp Extension
 
 Interactively simulate and visualize **vehicle swept paths** (turning envelopes
