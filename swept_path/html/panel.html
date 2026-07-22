@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vehicle Swept Path</title>
+<style>
+  :root {
+    --bg: #1e1f22; --panel: #2a2c30; --line: #3a3d42;
+    --fg: #e8eaed; --muted: #9aa0a6; --accent: #2f9bff; --accent2: #ff8c00;
+    --ok: #27ae60; --warn: #e74c3c;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 12px; background: var(--bg); color: var(--fg);
+    font: 13px/1.4 -apple-system, Segoe UI, Roboto, sans-serif;
+  }
+  h1 { font-size: 14px; margin: 0 0 10px; letter-spacing: .3px; }
+  .card {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 8px; padding: 10px 12px; margin-bottom: 10px;
+  }
+  .card h2 {
+    font-size: 11px; text-transform: uppercase; letter-spacing: .6px;
+    color: var(--muted); margin: 0 0 8px;
+  }
+  label { display: block; color: var(--muted); font-size: 11px; margin: 6px 0 2px; }
+  select, input[type=number] {
+    width: 100%; background: #17181b; color: var(--fg);
+    border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; font-size: 13px;
+  }
+  input[type=range] { width: 100%; }
+  .row { display: flex; gap: 8px; }
+  .row > * { flex: 1; }
+  button {
+    background: #34373c; color: var(--fg); border: 1px solid var(--line);
+    border-radius: 6px; padding: 8px 6px; font-size: 13px; cursor: pointer;
+    transition: background .12s; width: 100%;
+  }
+  button:hover { background: #40444a; }
+  button:active { background: #4a4f56; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.primary:hover { filter: brightness(1.08); }
+  button.warn { background: #3a2626; border-color: #5a3030; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+  .steer-val { text-align: center; font-variant-numeric: tabular-nums;
+    font-size: 15px; margin: 4px 0; }
+  .stat { display: flex; justify-content: space-between; padding: 3px 0;
+    border-bottom: 1px dashed var(--line); }
+  .stat:last-child { border-bottom: none; }
+  .stat .k { color: var(--muted); }
+  .stat .v { font-variant-numeric: tabular-nums; }
+  .checks label { display: flex; align-items: center; gap: 6px; color: var(--fg);
+    font-size: 12px; margin: 4px 0; cursor: pointer; }
+  .checks input { width: auto; }
+  .hint { color: var(--muted); font-size: 11px; margin-top: 6px; }
+  .drive-fwd { font-size: 16px; padding: 12px 6px; }
+</style>
+</head>
+<body>
+  <h1>🚚 Vehicle Swept Path</h1>
+
+  <div class="card">
+    <h2>Vehicle</h2>
+    <select id="preset"></select>
+    <button id="placeBtn" style="margin-top:8px">Place / Re-arm placement</button>
+    <div class="hint">Click in the model to set the start point, then click
+      again to aim the initial heading.</div>
+  </div>
+
+  <div class="card">
+    <h2>Steering</h2>
+    <div class="steer-val"><span id="steerVal">0.0</span>° &nbsp;
+      <span class="hint">(max ±<span id="steerMax">0</span>°)</span></div>
+    <input type="range" id="steer" min="-45" max="45" step="0.5" value="0">
+    <div class="grid3" style="margin-top:8px">
+      <button data-steer="-2">◀ Left</button>
+      <button data-steer="center">Center</button>
+      <button data-steer="2">Right ▶</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Drive</h2>
+    <div class="row">
+      <button class="drive-fwd primary" data-drive="1">▲ Forward</button>
+      <button class="drive-fwd" data-drive="-1">▼ Back</button>
+    </div>
+    <label>Step size (m)</label>
+    <input type="number" id="step" min="0.05" step="0.05" value="0.5">
+    <div class="hint">Tip: the arrow keys work in the model too.</div>
+  </div>
+
+  <div class="card">
+    <h2>Visualization</h2>
+    <div class="checks">
+      <label><input type="checkbox" id="optBody" checked> Body swept envelope</label>
+      <label><input type="checkbox" id="optTracks" checked> Wheel tracks</label>
+      <label><input type="checkbox" id="optGhosts" checked> Ghost footprints</label>
+    </div>
+    <label>Ghost spacing (m)</label>
+    <input type="number" id="ghost" min="0.5" step="0.5" value="2">
+  </div>
+
+  <div class="card">
+    <h2>Readout</h2>
+    <div class="stat"><span class="k">Frames</span><span class="v" id="stFrames">0</span></div>
+    <div class="stat"><span class="k">Distance</span><span class="v" id="stDist">0 m</span></div>
+    <div class="stat"><span class="k">Turn radius</span><span class="v" id="stRadius">–</span></div>
+    <div class="stat"><span class="k">Swept width</span><span class="v" id="stWidth">0 m</span></div>
+    <div class="stat"><span class="k">Units</span><span class="v" id="stUnits">1</span></div>
+  </div>
+
+  <div class="grid2">
+    <button id="resetBtn" class="warn">Reset path</button>
+    <button id="clearBtn" class="warn">Clear all</button>
+  </div>
+  <button id="commitBtn" class="primary" style="margin-top:8px">Commit to model</button>
+
+<script>
+  var SweptUI = (function () {
+    function su() { return (typeof sketchup !== 'undefined') ? sketchup : null; }
+    function call(name, arg) { var s = su(); if (s && s[name]) s[name](arg); }
+
+    function setPresets(list) {
+      var sel = document.getElementById('preset');
+      sel.innerHTML = '';
+      list.forEach(function (p) {
+        var o = document.createElement('option');
+        o.value = p.key; o.textContent = p.name;
+        sel.appendChild(o);
+      });
+    }
+
+    function setStatus(s) {
+      document.getElementById('preset').value = s.preset_key;
+      document.getElementById('steer').min = -s.max_steer_deg;
+      document.getElementById('steer').max = s.max_steer_deg;
+      document.getElementById('steer').value = s.steer_deg;
+      document.getElementById('steerVal').textContent = s.steer_deg.toFixed(1);
+      document.getElementById('steerMax').textContent = s.max_steer_deg.toFixed(0);
+      document.getElementById('step').value = s.step_m;
+      document.getElementById('ghost').value = s.ghost_spacing_m;
+      document.getElementById('stFrames').textContent = s.frames;
+      document.getElementById('stDist').textContent = s.dist_m.toFixed(2) + ' m';
+      document.getElementById('stRadius').textContent = s.radius_m + (s.radius_m.indexOf('∞') < 0 ? ' m' : '');
+      document.getElementById('stWidth').textContent = s.swept_width_m.toFixed(2) + ' m';
+      document.getElementById('stUnits').textContent = s.units;
+    }
+
+    return { setPresets: setPresets, setStatus: setStatus };
+  })();
+
+  function s(name, arg) { if (typeof sketchup !== 'undefined' && sketchup[name]) sketchup[name](arg); }
+
+  document.getElementById('preset').addEventListener('change', function () {
+    s('select_preset', this.value);
+  });
+  document.getElementById('placeBtn').addEventListener('click', function () { s('place'); });
+
+  document.getElementById('steer').addEventListener('input', function () {
+    document.getElementById('steerVal').textContent = parseFloat(this.value).toFixed(1);
+    s('set_steer', this.value);
+  });
+  document.querySelectorAll('[data-steer]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var v = this.getAttribute('data-steer');
+      if (v === 'center') s('set_steer', 0); else s('steer_by', v);
+    });
+  });
+  document.querySelectorAll('[data-drive]').forEach(function (b) {
+    b.addEventListener('click', function () { s('advance', this.getAttribute('data-drive')); });
+  });
+  document.getElementById('step').addEventListener('change', function () { s('set_step', this.value); });
+  document.getElementById('ghost').addEventListener('change', function () { s('set_ghost', this.value); });
+
+  function pushOptions() {
+    s('set_options', JSON.stringify({
+      body: document.getElementById('optBody').checked,
+      tracks: document.getElementById('optTracks').checked,
+      ghosts: document.getElementById('optGhosts').checked
+    }));
+  }
+  ['optBody', 'optTracks', 'optGhosts'].forEach(function (id) {
+    document.getElementById(id).addEventListener('change', pushOptions);
+  });
+
+  document.getElementById('resetBtn').addEventListener('click', function () { s('reset'); });
+  document.getElementById('clearBtn').addEventListener('click', function () { s('clear'); });
+  document.getElementById('commitBtn').addEventListener('click', function () { s('commit'); });
+
+  // Keyboard support while the dialog has focus (mirrors the tool bindings).
+  document.addEventListener('keydown', function (e) {
+    switch (e.key) {
+      case 'ArrowUp':    s('advance', 1); e.preventDefault(); break;
+      case 'ArrowDown':  s('advance', -1); e.preventDefault(); break;
+      case 'ArrowLeft':  s('steer_by', 2); e.preventDefault(); break;
+      case 'ArrowRight': s('steer_by', -2); e.preventDefault(); break;
+      case ' ':          s('set_steer', 0); e.preventDefault(); break;
+    }
+  });
+
+  window.addEventListener('load', function () { s('ready'); });
+</script>
+</body>
+</html>
