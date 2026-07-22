@@ -24,6 +24,10 @@ geometry, intersection, roundabout, and parking-layout checks.
   - body **swept envelope** (traces of all body corners),
   - **wheel tracks** (tire contact paths — shows the critical inner rear wheel),
   - **ghost footprints** dropped at a chosen spacing along the path.
+- **Live projection preview** — preview of the swept envelope and wheel
+  tracks the vehicle *would* follow at its current steering angle, shown before
+  you commit. Toggle **forward** and **reverse** projections independently, and
+  set the reach by either **distance** or **number of steps**.
 - **Interactive control** three ways: arrow keys in the model, the HTML control
   panel, or an interactive click-to-place / click-to-aim setup.
 - **Live readout**: distance travelled, current turn radius, and swept width.
@@ -78,9 +82,14 @@ Requires SketchUp 2017 or newer (uses the `UI::HtmlDialog` API).
 
    The same actions are available as buttons in the control panel, plus a
    steering slider and a step-size field.
-5. Toggle **body envelope / wheel tracks / ghost footprints** and adjust ghost
-   spacing in the *Visualization* section.
-6. **Reset path** re-runs from the start point; **Clear all** removes the
+5. Use the **Projection** section to preview where the current
+   steering angle would take the vehicle — turn **Forward** and/or **Reverse**
+   projection on, and set the reach by **Distance** or **Steps**. It updates live
+   as you steer, so you can aim a maneuver before driving it.
+6. Toggle **body envelope / wheel tracks / ghost footprints** and adjust ghost
+   spacing in the *Visualization* section. (These toggles also govern which parts
+   of the projection preview are drawn.)
+7. **Reset path** re-runs from the start point; **Clear all** removes the
    vehicle; **Commit to model** bakes the current result into a group.
 
 ## How it works

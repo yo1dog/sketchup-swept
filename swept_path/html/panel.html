@@ -93,6 +93,31 @@
   </div>
 
   <div class="card">
+    <h2>Projection (live preview)</h2>
+    <div class="checks">
+      <label><input type="checkbox" id="projFwd" checked>
+        <span style="color:#00c8b4">■</span> Forward projection</label>
+      <label><input type="checkbox" id="projRev">
+        <span style="color:#e65ac8">■</span> Reverse projection</label>
+    </div>
+    <div class="row" style="margin-top:6px">
+      <div>
+        <label>Project by</label>
+        <select id="projMode">
+          <option value="distance">Distance</option>
+          <option value="steps">Steps</option>
+        </select>
+      </div>
+      <div>
+        <label id="projValLabel">Distance (m)</label>
+        <input type="number" id="projVal" min="0.1" step="0.5" value="8">
+      </div>
+    </div>
+    <div class="hint">Preview of where the vehicle would sweep at the
+      current steering angle — reach ≈ <span id="projReach">8</span> m.</div>
+  </div>
+
+  <div class="card">
     <h2>Visualization</h2>
     <div class="checks">
       <label><input type="checkbox" id="optBody" checked> Body swept envelope</label>
@@ -147,6 +172,14 @@
       document.getElementById('stRadius').textContent = s.radius_m + (s.radius_m.indexOf('∞') < 0 ? ' m' : '');
       document.getElementById('stWidth').textContent = s.swept_width_m.toFixed(2) + ' m';
       document.getElementById('stUnits').textContent = s.units;
+
+      document.getElementById('projFwd').checked = s.project_fwd;
+      document.getElementById('projRev').checked = s.project_rev;
+      document.getElementById('projMode').value = s.project_mode;
+      document.getElementById('projVal').value = s.project_value;
+      document.getElementById('projValLabel').textContent =
+        (s.project_mode === 'steps') ? 'Steps' : 'Distance (m)';
+      document.getElementById('projReach').textContent = s.projection_len_m.toFixed(1);
     }
 
     return { setPresets: setPresets, setStatus: setStatus };
@@ -184,6 +217,21 @@
   }
   ['optBody', 'optTracks', 'optGhosts'].forEach(function (id) {
     document.getElementById(id).addEventListener('change', pushOptions);
+  });
+
+  function pushProjection() {
+    var mode = document.getElementById('projMode').value;
+    document.getElementById('projValLabel').textContent =
+      (mode === 'steps') ? 'Steps' : 'Distance (m)';
+    s('set_projection', JSON.stringify({
+      fwd: document.getElementById('projFwd').checked,
+      rev: document.getElementById('projRev').checked,
+      mode: mode,
+      value: document.getElementById('projVal').value
+    }));
+  }
+  ['projFwd', 'projRev', 'projMode', 'projVal'].forEach(function (id) {
+    document.getElementById(id).addEventListener('change', pushProjection);
   });
 
   document.getElementById('resetBtn').addEventListener('click', function () { s('reset'); });

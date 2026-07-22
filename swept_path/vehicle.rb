@@ -103,6 +103,19 @@ module Swept
                hitch[1] - (@drawbar * Math.sin(@heading))]
     end
 
+    # Snapshot / restore the mutable pose so a projection can be simulated
+    # forward from the current state and then rolled back.
+    def capture
+      { pos: @pos.dup, axle: @axle.dup, heading: @heading, last_steer: @last_steer }
+    end
+
+    def restore(s)
+      @pos = s[:pos].dup
+      @axle = s[:axle].dup
+      @heading = s[:heading]
+      @last_steer = s[:last_steer]
+    end
+
     # ---- Motion ----------------------------------------------------------
 
     # Advance the lead unit by ds metres (may be negative) at steer radians.
@@ -203,6 +216,14 @@ module Swept
 
     def wheelbase
       lead.instance_variable_get(:@wheelbase)
+    end
+
+    def capture_state
+      @units.map(&:capture)
+    end
+
+    def restore_state(state)
+      @units.each_with_index { |u, i| u.restore(state[i]) }
     end
 
     def place(pos, heading)

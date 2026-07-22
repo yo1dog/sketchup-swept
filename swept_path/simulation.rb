@@ -24,9 +24,16 @@ module Swept
     C_GHOST  = [130, 170, 255]
     C_ARROW  = [220, 40, 40]
     C_HITCH  = [150, 60, 200]
+    # Projection preview colours (forward = teal, reverse = magenta).
+    C_PROJ_F  = [0, 200, 180]
+    C_PROJ_FT = [0, 140, 120]
+    C_PROJ_R  = [230, 90, 200]
+    C_PROJ_RT = [170, 60, 150]
 
     attr_accessor :step_m, :ghost_spacing_m,
-                  :show_body_traces, :show_wheel_tracks, :show_ghosts
+                  :show_body_traces, :show_wheel_tracks, :show_ghosts,
+                  :show_projection_fwd, :show_projection_rev,
+                  :project_mode, :project_distance_m, :project_steps
     attr_reader :frames, :dist_m, :steer_deg, :placed, :vehicle, :preset_key
 
     def initialize
@@ -39,6 +46,11 @@ module Swept
       @show_body_traces = true
       @show_wheel_tracks = true
       @show_ghosts = true
+      @show_projection_fwd = true
+      @show_projection_rev = false
+      @project_mode = :distance # :distance or :steps
+      @project_distance_m = 8.0
+      @project_steps = 10
       @frames = []
       @dist_m = 0.0
       @placed = false
@@ -108,6 +120,37 @@ module Swept
       end
     end
 
+    # ---- Projection (live preview of where the current steer leads) ------
+
+    # How far ahead the projection reaches, in metres.
+    def projection_distance
+      @project_mode == :steps ? (@project_steps * @step_m) : @project_distance_m
+    end
+
+    # Simulate from the CURRENT pose at the CURRENT steering angle for the
+    # projection distance, without recording into @frames or moving the real
+    # vehicle. direction = +1 (forward) or -1 (reverse). Returns frames.
+    def project(direction)
+      return [] unless @placed
+
+      dist = projection_distance
+      return [] if dist <= 0
+
+      steer = @steer_deg * DEG
+      state = @vehicle.capture_state
+      frames = [{ fp: @vehicle.footprint, dist: 0.0 }]
+      n = [(dist / SUBSTEP_M).ceil, 1].max
+      inc = direction * dist / n
+      acc = 0.0
+      n.times do
+        @vehicle.step(inc, steer)
+        acc += inc.abs
+        frames << { fp: @vehicle.footprint, dist: acc }
+      end
+      @vehicle.restore_state(state)
+      frames
+    end
+
     # ---- Status readout --------------------------------------------------
 
     def status
@@ -122,7 +165,12 @@ module Swept
         swept_width_m: round2(swept_width),
         step_m: @step_m,
         ghost_spacing_m: @ghost_spacing_m,
-        units: @vehicle.units.size
+        units: @vehicle.units.size,
+        project_fwd: @show_projection_fwd,
+        project_rev: @show_projection_rev,
+        project_mode: @project_mode.to_s,
+        project_value: (@project_mode == :steps ? @project_steps : @project_distance_m),
+        projection_len_m: round2(projection_distance)
       }
     end
 
@@ -136,6 +184,7 @@ module Swept
       return unless @placed
 
       draw_traces(view)
+      draw_projection(view)
       draw_ghosts(view)
       draw_vehicle(view, @vehicle.footprint, Z_BODY, true)
     end
@@ -272,6 +321,41 @@ module Swept
       each_mark_trace { |poly| view.draw(GL_LINE_STRIP, poly.map { |c| Util.m_to_pt(c, Z_TRACK) }) }
     end
 
+    # Draw the forward/reverse projection previews as solid lines.
+    def draw_projection(view)
+      #view.line_stipple = '-'
+      draw_proj_dir(view, project(1), C_PROJ_F, C_PROJ_FT) if @show_projection_fwd
+      draw_proj_dir(view, project(-1), C_PROJ_R, C_PROJ_RT) if @show_projection_rev
+      #view.line_stipple = ''
+    end
+
+    def draw_proj_dir(view, frames, body_c, track_c)
+      return if frames.size < 2
+
+      if @show_body_traces
+        set_color(view, body_c)
+        view.line_width = 2
+        each_body_trace(frames) do |poly|
+          view.draw(GL_LINE_STRIP, poly.map { |c| Util.m_to_pt(c, Z_TRACE) })
+        end
+      end
+
+      if @show_wheel_tracks
+        set_color(view, track_c)
+        view.line_width = 1
+        each_mark_trace(frames) do |poly|
+          view.draw(GL_LINE_STRIP, poly.map { |c| Util.m_to_pt(c, Z_TRACK) })
+        end
+      end
+
+      # Outline the projected end position.
+      set_color(view, body_c)
+      view.line_width = 1
+      frames.last[:fp].each do |unit|
+        view.draw(GL_LINE_LOOP, unit[:body].map { |c| Util.m_to_pt(c, Z_GHOST) })
+      end
+    end
+
     def draw_ghosts(view)
       return unless @show_ghosts
 
@@ -286,23 +370,27 @@ module Swept
     end
 
     # Yield a polyline for each traced body corner (per unit, per corner).
-    def each_body_trace
-      n_units = @frames.first[:fp].size
+    def each_body_trace(frames = @frames)
+      return if frames.size < 2
+
+      n_units = frames.first[:fp].size
       n_units.times do |u|
         4.times do |c|
-          poly = @frames.map { |f| f[:fp][u][:body][c] }
+          poly = frames.map { |f| f[:fp][u][:body][c] }
           yield poly
         end
       end
     end
 
     # Yield a polyline for each traced wheel-contact mark.
-    def each_mark_trace
-      n_units = @frames.first[:fp].size
+    def each_mark_trace(frames = @frames)
+      return if frames.size < 2
+
+      n_units = frames.first[:fp].size
       n_units.times do |u|
-        n_marks = @frames.first[:fp][u][:marks].size
+        n_marks = frames.first[:fp][u][:marks].size
         n_marks.times do |m|
-          poly = @frames.map { |f| f[:fp][u][:marks][m] }
+          poly = frames.map { |f| f[:fp][u][:marks][m] }
           yield poly
         end
       end

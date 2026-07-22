@@ -72,6 +72,20 @@ module Swept
         invalidate
       end
 
+      dlg.add_action_callback('set_projection') do |_ctx, json|
+        o = JSON.parse(json)
+        App.sim.show_projection_fwd = o['fwd']
+        App.sim.show_projection_rev = o['rev']
+        App.sim.project_mode = (o['mode'] == 'steps' ? :steps : :distance)
+        if App.sim.project_mode == :steps
+          App.sim.project_steps = [o['value'].to_i, 1].max
+        else
+          App.sim.project_distance_m = [o['value'].to_f, 0.1].max
+        end
+        push_status(dlg)
+        invalidate
+      end
+
       dlg.add_action_callback('reset') do |_ctx|
         App.sim.reset
         push_status(dlg)
