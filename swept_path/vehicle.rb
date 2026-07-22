@@ -44,6 +44,69 @@ module Swept
     def pt_to_m(pt)
       [pt.x.to_f / IN_PER_M, pt.y.to_f / IN_PER_M]
     end
+
+    # --- 2D geometry helpers (used to build the swept-area envelope) ------
+    #
+    # A "body" here is a footprint rectangle: 4 world corners in the order
+    # [rear-left, rear-right, front-right, front-left] (see Unit#footprint).
+
+    def mid(a, b)
+      [(a[0] + b[0]) / 2.0, (a[1] + b[1]) / 2.0]
+    end
+
+    # Instantaneous centre of rotation (ICR) that carries body b0 onto b1, and
+    # the heading change dtheta. Returns [centre, dtheta], or [nil, dtheta] when
+    # the motion is a pure translation (straight). Exact for constant-curvature
+    # motion: a rigid body's poses at two instants determine the fixed point it
+    # rotates about.
+    def pose_icr(b0, b1)
+      r0 = mid(b0[0], b0[1]) # rear-axle midpoint before
+      r1 = mid(b1[0], b1[1]) # rear-axle midpoint after
+      dth = norm(rect_heading(b1) - rect_heading(b0))
+      return [nil, dth] if dth.abs < 1e-6
+
+      # (r1 - c) = Rot(dth)(r0 - c)  =>  c = r0 - (Rot(dth) - I)^-1 (r1 - r0)
+      cc = Math.cos(dth) - 1.0
+      ss = Math.sin(dth)
+      det = (cc * cc) + (ss * ss)
+      dx = r1[0] - r0[0]
+      dy = r1[1] - r0[1]
+      ix = ((cc * dx) + (ss * dy)) / det
+      iy = ((-ss * dx) + (cc * dy)) / det
+      [[r0[0] - ix, r0[1] - iy], dth]
+    end
+
+    # Heading (radians) of a footprint rectangle, rear-midpoint -> front-midpoint.
+    def rect_heading(body)
+      rm = mid(body[0], body[1])
+      fm = mid(body[2], body[3])
+      Math.atan2(fm[1] - rm[1], fm[0] - rm[0])
+    end
+
+    # The body corner farthest from centre c (traces the outer envelope arc).
+    def far_corner(c, body)
+      body.max_by { |p| ((p[0] - c[0])**2) + ((p[1] - c[1])**2) }
+    end
+
+    # The point on the body rectangle's boundary nearest to centre c (traces the
+    # inner envelope arc). May be a corner or the perpendicular foot on an edge.
+    def near_point(c, body)
+      best = nil
+      4.times do |i|
+        a = body[i]
+        b = body[(i + 1) % 4]
+        ax = b[0] - a[0]
+        ay = b[1] - a[1]
+        len2 = (ax * ax) + (ay * ay)
+        t = len2 < 1e-12 ? 0.0 : (((c[0] - a[0]) * ax) + ((c[1] - a[1]) * ay)) / len2
+        t = 0.0 if t < 0.0
+        t = 1.0 if t > 1.0
+        p = [a[0] + (ax * t), a[1] + (ay * t)]
+        d2 = ((p[0] - c[0])**2) + ((p[1] - c[1])**2)
+        best = [d2, p] if best.nil? || d2 < best[0]
+      end
+      best[1]
+    end
   end
 
   # A single rigid unit of a vehicle (lead or towed).

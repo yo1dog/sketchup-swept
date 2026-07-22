@@ -308,11 +308,7 @@ module Swept
     def draw_traces(view)
       return if @frames.size < 2
 
-      if @show_body_traces
-        set_color(view, C_TRACE)
-        view.line_width = 2
-        each_body_trace { |poly| view.draw(GL_LINE_STRIP, poly.map { |c| Util.m_to_pt(c, Z_TRACE) }) }
-      end
+      draw_outline(view, @frames, C_TRACE, Z_TRACE) if @show_body_traces
 
       return unless @show_wheel_tracks
 
@@ -332,13 +328,7 @@ module Swept
     def draw_proj_dir(view, frames, body_c, track_c)
       return if frames.size < 2
 
-      if @show_body_traces
-        set_color(view, body_c)
-        view.line_width = 2
-        each_body_trace(frames) do |poly|
-          view.draw(GL_LINE_STRIP, poly.map { |c| Util.m_to_pt(c, Z_TRACE) })
-        end
-      end
+      draw_outline(view, frames, body_c, Z_TRACE) if @show_body_traces
 
       if @show_wheel_tracks
         set_color(view, track_c)
@@ -369,16 +359,137 @@ module Swept
       end
     end
 
-    # Yield a polyline for each traced body corner (per unit, per corner).
-    def each_body_trace(frames = @frames)
-      return if frames.size < 2
-
-      n_units = frames.first[:fp].size
-      n_units.times do |u|
-        4.times do |c|
-          poly = frames.map { |f| f[:fp][u][:body][c] }
-          yield poly
+    # Draw the swept-area envelope for the given frames: for each vehicle unit,
+    # the outer and inner rails (as polylines) plus the start/end footprint caps.
+    def draw_outline(view, frames, color, z)
+      set_color(view, color)
+      view.line_width = 2
+      body_envelopes(frames).each do |env|
+        view.draw(GL_LINE_STRIP, env[:left].map { |p| Util.m_to_pt(p, z) }) if env[:left].size > 1
+        view.draw(GL_LINE_STRIP, env[:right].map { |p| Util.m_to_pt(p, z) }) if env[:right].size > 1
+        env[:swingout].each do |arc|
+          view.draw(GL_LINE_STRIP, arc_points_m(arc).map { |p| Util.m_to_pt(p, z) })
         end
+        [env[:first], env[:last]].each do |cap|
+          view.draw(GL_LINE_LOOP, cap.map { |p| Util.m_to_pt(p, z) })
+        end
+      end
+    end
+
+    # Build the swept-area envelope for every unit. The true swept region of a
+    # rigid body is bounded by two rails plus the terminal footprints:
+    #   * the OUTER rail is traced by the body corner farthest from the
+    #     instantaneous centre of rotation (ICR),
+    #   * the INNER rail by the nearest point of the body to the ICR,
+    #   * the start and end footprints cap the region.
+    # This is analytic (no sampling/union): the ICR at each step comes directly
+    # from the change in pose. Returns one hash per unit:
+    #   { left:, right:, centres:, first:, last: }  (rails as point arrays,
+    #   centres[i] = the ICR that generated rail point i, or nil when straight).
+    def body_envelopes(frames)
+      return [] if frames.size < 2
+
+      frames.first[:fp].each_index.map { |u| unit_envelope(frames, u) }
+    end
+
+    def unit_envelope(frames, unit_idx)
+      bodies = frames.map { |f| f[:fp][unit_idx][:body] }
+      n = bodies.size
+      left = []
+      right = []
+      centres = []
+      n.times do |i|
+        # Use the forward step (last frame reuses the final step) so the turn
+        # direction — which side is inner vs outer — is signed correctly.
+        a = [i, n - 2].min
+        centre, dth = Util.pose_icr(bodies[a], bodies[a + 1])
+        body = bodies[i]
+        if centre.nil?
+          left << body[3]  # front-left
+          right << body[2] # front-right
+        else
+          far = Util.far_corner(centre, body)
+          near = Util.near_point(centre, body)
+          # Left turn (dth > 0): ICR is on the left, so the near point is the
+          # left/inner rail and the far corner the right/outer rail; mirror for
+          # a right turn. This keeps each rail on a consistent physical side.
+          if dth.positive?
+            left << near
+            right << far
+          else
+            left << far
+            right << near
+          end
+        end
+        centres << centre
+      end
+      { left: left, right: right, centres: centres, first: bodies.first,
+        last: bodies.last, swingout: swingout_arcs(bodies, centres) }
+    end
+
+    # Rear-overhang swingout (tail swing): while a vehicle turns, its rear-outer
+    # corner rotates about the fixed instantaneous centre of rotation (ICR),
+    # tracing a circular arc that bulges outside the rest of the swept area on
+    # turn entry. The outer rail follows the farthest corner and cannot also
+    # capture this, so add it as a separate arc. It is fully analytic — no
+    # sampling. Returns an array of arc specs { centre:, radius:, a0:, sweep: },
+    # one per turn leg (a maximal run of frames sharing an ICR).
+    def swingout_arcs(bodies, centres)
+      n = bodies.size
+      arcs = []
+      n.times do |i|
+        centre = centres[i]
+        next unless centre
+        next unless i.zero? || !same_centre?(centres[i - 1], centre)
+
+        # Cap the arc at the leg's actual rotation (short turns end before the
+        # corner would rejoin the swept area).
+        j = i
+        j += 1 while j + 1 < n && centres[j + 1] && same_centre?(centres[j + 1], centre)
+        max_sweep = Util.norm(Util.rect_heading(bodies[j]) - Util.rect_heading(bodies[i])).abs
+        arc = swingout_arc(bodies[i], centre, max_sweep)
+        arcs << arc if arc
+      end
+      arcs
+    end
+
+    # Swingout arc for one turn-leg start footprint, or nil if the rear corner
+    # does not protrude. The arc starts at the rear-outer corner and ends where
+    # the same circle (about the ICR) re-crosses the footprint's outer edge:
+    #   P* = RO + s*d,  d = unit(RO->FO),  s = -2 (RO - ICR)·d.
+    def swingout_arc(body, centre, max_sweep)
+      ro = [body[0], body[1]].max_by { |p| dist2(p, centre) } # outer-side rear corner
+      fo = [body[2], body[3]].max_by { |p| dist2(p, centre) } # outer-side front corner
+      dx = fo[0] - ro[0]
+      dy = fo[1] - ro[1]
+      len = Math.hypot(dx, dy)
+      return nil if len < 1e-9
+
+      ux = dx / len
+      uy = dy / len
+      s = -2.0 * (((ro[0] - centre[0]) * ux) + ((ro[1] - centre[1]) * uy))
+      return nil unless s > 1e-6 && s <= len + 1e-9 # rear corner does not swing out
+
+      pstar = [ro[0] + (ux * s), ro[1] + (uy * s)]
+      a0 = Math.atan2(ro[1] - centre[1], ro[0] - centre[0])
+      sweep = Util.norm(Math.atan2(pstar[1] - centre[1], pstar[0] - centre[0]) - a0)
+      return nil if sweep.abs < 1e-6
+
+      sweep = (sweep.positive? ? 1 : -1) * [sweep.abs, max_sweep].min
+      { centre: centre, radius: Math.sqrt(dist2(ro, centre)), a0: a0, sweep: sweep }
+    end
+
+    def dist2(a, b)
+      ((a[0] - b[0])**2) + ((a[1] - b[1])**2)
+    end
+
+    # Tessellate an arc spec into a polyline of metre points (~2 deg segments).
+    def arc_points_m(arc)
+      steps = [(arc[:sweep].abs / (2.0 * DEG)).ceil, 1].max
+      (0..steps).map do |k|
+        ang = arc[:a0] + (arc[:sweep] * k / steps)
+        [arc[:centre][0] + (arc[:radius] * Math.cos(ang)),
+         arc[:centre][1] + (arc[:radius] * Math.sin(ang))]
       end
     end
 
@@ -417,9 +528,76 @@ module Swept
     # --- commit helpers ---
 
     def commit_traces(ents)
-      each_body_trace do |poly|
-        add_polyline(ents, poly, Z_TRACE)
+      body_envelopes(@frames).each do |env|
+        commit_rail(ents, env[:left], env[:centres])
+        commit_rail(ents, env[:right], env[:centres])
+        env[:swingout].each { |arc| commit_swingout_arc(ents, arc) }
+        add_polyline(ents, env[:first] + [env[:first].first], Z_TRACE)
+        add_polyline(ents, env[:last] + [env[:last].first], Z_TRACE)
       end
+    end
+
+    # Commit one rail. Consecutive points sharing an ICR are a constant-radius
+    # arc, so emit a true arc entity; straight/mixed stretches become edges.
+    def commit_rail(ents, pts, centres)
+      n = pts.size
+      return if n < 2
+
+      i = 0
+      while i < n - 1
+        centre = centres[i]
+        run_end = arc_run_end(centre, centres, i, n)
+        if run_end - i >= 2 && commit_arc(ents, pts[i..run_end], centre)
+          i = run_end
+        else
+          add_polyline(ents, [pts[i], pts[i + 1]], Z_TRACE)
+          i += 1
+        end
+      end
+    end
+
+    # Extent of the maximal run starting at i whose points share centre.
+    def arc_run_end(centre, centres, i, n)
+      return i if centre.nil?
+
+      j = i
+      j += 1 while j + 1 < n && centres[j + 1] && same_centre?(centres[j + 1], centre)
+      j
+    end
+
+    def same_centre?(a, b)
+      ((a[0] - b[0]).abs < 1e-4) && ((a[1] - b[1]).abs < 1e-4)
+    end
+
+    # Emit a true circular arc through run points about centre. Returns false
+    # (caller falls back to edges) if SketchUp rejects the geometry.
+    def commit_arc(ents, run, centre)
+      radius = run.sum { |p| Math.hypot(p[0] - centre[0], p[1] - centre[1]) } / run.size
+      sweep = 0.0
+      run.each_cons(2) do |a, b|
+        va = [a[0] - centre[0], a[1] - centre[1]]
+        vb = [b[0] - centre[0], b[1] - centre[1]]
+        sweep += Math.atan2((va[0] * vb[1]) - (va[1] * vb[0]), (va[0] * vb[0]) + (va[1] * vb[1]))
+      end
+      return false if sweep.abs < 1e-6 || radius < 1e-6
+
+      c3 = Util.m_to_pt(centre, Z_TRACE)
+      xaxis = Geom::Vector3d.new(run.first[0] - centre[0], run.first[1] - centre[1], 0)
+      normal = Geom::Vector3d.new(0, 0, sweep.positive? ? 1 : -1)
+      ents.add_arc(c3, xaxis, normal, radius * Util::IN_PER_M, 0.0, sweep.abs)
+      true
+    rescue StandardError
+      false
+    end
+
+    # Commit a swingout arc spec as a real arc entity (polyline on failure).
+    def commit_swingout_arc(ents, arc)
+      c3 = Util.m_to_pt(arc[:centre], Z_TRACE)
+      xaxis = Geom::Vector3d.new(Math.cos(arc[:a0]), Math.sin(arc[:a0]), 0)
+      normal = Geom::Vector3d.new(0, 0, arc[:sweep].positive? ? 1 : -1)
+      ents.add_arc(c3, xaxis, normal, arc[:radius] * Util::IN_PER_M, 0.0, arc[:sweep].abs)
+    rescue StandardError
+      add_polyline(ents, arc_points_m(arc), Z_TRACE)
     end
 
     def commit_tracks(ents)

@@ -21,7 +21,8 @@ geometry, intersection, roundabout, and parking-layout checks.
   passenger car (P), single-unit truck (SU-30), city bus (BUS-40),
   car + utility trailer, semi-trailer (WB-50), and double-trailer (WB-67D).
 - **Live visualization**:
-  - body **swept envelope** (traces of all body corners),
+  - body **swept envelope** (the true swept area — outer/inner rails from the
+    turn geometry, capped by the start and end footprints),
   - **wheel tracks** (tire contact paths — shows the critical inner rear wheel),
   - **ghost footprints** dropped at a chosen spacing along the path.
 - **Live projection preview** — preview of the swept envelope and wheel
@@ -126,8 +127,18 @@ swept_path/
 ## Notes & limitations
 
 - Flat 2D plane only (by design — matches how swept-path checks are done).
-- The swept envelope is drawn from body-corner and wheel-contact traces plus
-  ghost footprints, which is the standard swept-path deliverable. It does not
-  compute a single filled Boolean-union polygon of the whole envelope.
+- The body swept envelope is the true swept area, computed analytically (no
+  sampling/union): each unit's boundary is two rails — the outer traced by the
+  body corner farthest from the instantaneous centre of rotation (ICR), the
+  inner by the nearest point of the body to it — capped by the start and end
+  footprints. The ICR is recovered directly from the change in pose, so on a
+  constant-steer turn the rails are exact circular arcs (committed as real arc
+  entities). Rear-overhang swingout (tail swing on turn entry) is added as a
+  closed-form arc: the rear-outer corner rotates about the same ICR, so its
+  protruding part is the circle arc from that corner to where the circle
+  re-crosses the footprint's outer edge. Wheel-contact tracks and ghost
+  footprints are drawn as
+  before. Multi-unit vehicles show one envelope per unit. The envelope is drawn
+  as edges/arcs, not a single filled face.
 - Trailer dynamics are quasi-static (kinematic), appropriate for low-speed
   maneuvering analysis — not a dynamic (speed/tire-force) simulation.
