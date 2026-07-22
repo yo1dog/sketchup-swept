@@ -9,6 +9,7 @@ module Swept
   class Simulation
     DEG = Math::PI / 180.0
     SUBSTEP_M = 0.1 # integrate motion in small increments for accuracy
+    ARC_SEG_DEG = 2.0 # committed arcs: roughly one segment per this many degrees
 
     # Draw layering (metres above ground) to avoid z-fighting.
     Z_TRACK = 0.010
@@ -483,9 +484,9 @@ module Swept
       ((a[0] - b[0])**2) + ((a[1] - b[1])**2)
     end
 
-    # Tessellate an arc spec into a polyline of metre points (~2 deg segments).
+    # Tessellate an arc spec into a polyline of metre points for preview.
     def arc_points_m(arc)
-      steps = [(arc[:sweep].abs / (2.0 * DEG)).ceil, 1].max
+      steps = [(arc[:sweep].abs / (ARC_SEG_DEG * DEG)).ceil, 1].max
       (0..steps).map do |k|
         ang = arc[:a0] + (arc[:sweep] * k / steps)
         [arc[:centre][0] + (arc[:radius] * Math.cos(ang)),
@@ -585,10 +586,16 @@ module Swept
       c3 = Util.m_to_pt(centre, z)
       xaxis = Geom::Vector3d.new(run.first[0] - centre[0], run.first[1] - centre[1], 0)
       normal = Geom::Vector3d.new(0, 0, sweep.positive? ? 1 : -1)
-      ents.add_arc(c3, xaxis, normal, radius * Util::IN_PER_M, 0.0, sweep.abs)
+      ents.add_arc(c3, xaxis, normal, radius * Util::IN_PER_M, 0.0, sweep.abs, arc_segments(sweep))
       true
     rescue StandardError
       false
+    end
+
+    # Segment count for a committed arc of the given sweep (radians) — finer
+    # than SketchUp's default of 12 so long arcs stay smooth.
+    def arc_segments(sweep)
+      [(sweep.abs / (ARC_SEG_DEG * DEG)).ceil, 8].max
     end
 
     # Commit a swingout arc spec as a real arc entity (polyline on failure).
@@ -596,7 +603,8 @@ module Swept
       c3 = Util.m_to_pt(arc[:centre], Z_TRACE)
       xaxis = Geom::Vector3d.new(Math.cos(arc[:a0]), Math.sin(arc[:a0]), 0)
       normal = Geom::Vector3d.new(0, 0, arc[:sweep].positive? ? 1 : -1)
-      ents.add_arc(c3, xaxis, normal, arc[:radius] * Util::IN_PER_M, 0.0, arc[:sweep].abs)
+      ents.add_arc(c3, xaxis, normal, arc[:radius] * Util::IN_PER_M, 0.0, arc[:sweep].abs,
+                   arc_segments(arc[:sweep]))
     rescue StandardError
       add_polyline(ents, arc_points_m(arc), Z_TRACE)
     end
