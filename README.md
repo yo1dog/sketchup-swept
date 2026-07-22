@@ -72,7 +72,11 @@ Requires SketchUp 2017 or newer (uses the `UI::HtmlDialog` API).
 
 1. **Extensions ▸ Vehicle Swept Path ▸ Open Control Panel.** This opens the
    panel and activates the Swept Path tool.
-2. Pick a **vehicle** from the dropdown.
+2. Pick a **vehicle** from the dropdown, or edit the **Custom lead vehicle**
+   fields (wheelbase, width, front/rear overhang, min turn radius, wheel track)
+   to define your own single-unit vehicle. Editing any field switches the
+   dropdown to *Custom* and re-runs the path; selecting a built-in preset fills
+   the fields with its lead-unit dimensions so you can start from one and tweak.
 3. **Place it:** click once in the model for the start point (the lead unit's
    rear axle), then click again to aim the initial heading.
 4. **Drive:**

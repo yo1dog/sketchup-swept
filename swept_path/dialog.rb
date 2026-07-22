@@ -35,6 +35,12 @@ module Swept
         invalidate
       end
 
+      dlg.add_action_callback('set_custom') do |_ctx, json|
+        App.sim.load_custom(JSON.parse(json))
+        push_status(dlg)
+        invalidate
+      end
+
       dlg.add_action_callback('set_steer') do |_ctx, deg|
         App.sim.steer_deg = deg.to_f
         push_status(dlg)

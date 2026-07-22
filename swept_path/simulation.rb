@@ -69,6 +69,26 @@ module Swept
       replace_if_placed
     end
 
+    # Build and load a one-off custom LEAD vehicle from UI field values (all in
+    # metres). Values are clamped to sensible minimums so the kinematics stay
+    # valid. This replaces any current vehicle with a single lead unit.
+    def load_custom(fields)
+      spec = {
+        kind: :lead,
+        wheelbase: clamp_min(fields['wheelbase'], 0.5),
+        front_overhang: clamp_min(fields['front_overhang'], 0.0),
+        rear_overhang: clamp_min(fields['rear_overhang'], 0.0),
+        width: clamp_min(fields['width'], 0.5),
+        track: clamp_min(fields['track'], 0.1),
+        min_turn_radius: clamp_min(fields['min_turn_radius'], 0.5)
+      }
+      @preset = { key: 'CUSTOM', name: 'Custom vehicle', units: [spec] }
+      @preset_key = 'CUSTOM'
+      @vehicle = Vehicle.new(@preset)
+      clamp_steer!
+      replace_if_placed
+    end
+
     def max_steer_deg
       @vehicle.max_steer / DEG
     end
@@ -158,6 +178,7 @@ module Swept
       {
         placed: @placed,
         preset_key: @preset_key,
+        lead: lead_spec,
         frames: @frames.size,
         dist_m: round2(@dist_m),
         steer_deg: round2(@steer_deg),
@@ -220,6 +241,24 @@ module Swept
       lim = max_steer_deg
       @steer_deg = lim if @steer_deg > lim
       @steer_deg = -lim if @steer_deg < -lim
+    end
+
+    def clamp_min(value, lo)
+      v = value.to_f
+      v < lo ? lo : v
+    end
+
+    # The current lead unit's dimensions, for the UI's custom-vehicle fields.
+    def lead_spec
+      u = @preset[:units].first
+      {
+        wheelbase: u[:wheelbase],
+        front_overhang: u[:front_overhang],
+        rear_overhang: u[:rear_overhang],
+        width: u[:width],
+        track: u[:track] || round2(u[:width] * 0.85),
+        min_turn_radius: u[:min_turn_radius]
+      }
     end
 
     def replace_if_placed
