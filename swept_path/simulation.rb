@@ -606,7 +606,12 @@ module Swept
       j
     end
 
+    # True only if both are real ICRs at (nearly) the same point. A nil centre
+    # (a straight step) never matches, so a turn following a straight stretch is
+    # correctly treated as the start of a new turn leg.
     def same_centre?(a, b)
+      return false if a.nil? || b.nil?
+
       ((a[0] - b[0]).abs < 1e-4) && ((a[1] - b[1]).abs < 1e-4)
     end
 
