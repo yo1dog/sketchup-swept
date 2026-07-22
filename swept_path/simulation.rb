@@ -537,9 +537,10 @@ module Swept
       end
     end
 
-    # Commit one rail. Consecutive points sharing an ICR are a constant-radius
-    # arc, so emit a true arc entity; straight/mixed stretches become edges.
-    def commit_rail(ents, pts, centres)
+    # Commit one polyline whose points share a per-frame ICR (a rail or a wheel
+    # track). Consecutive points sharing an ICR are a constant-radius arc, so
+    # emit a true arc entity; straight/mixed stretches become edges.
+    def commit_rail(ents, pts, centres, z = Z_TRACE)
       n = pts.size
       return if n < 2
 
@@ -547,10 +548,10 @@ module Swept
       while i < n - 1
         centre = centres[i]
         run_end = arc_run_end(centre, centres, i, n)
-        if run_end - i >= 2 && commit_arc(ents, pts[i..run_end], centre)
+        if run_end - i >= 2 && commit_arc(ents, pts[i..run_end], centre, z)
           i = run_end
         else
-          add_polyline(ents, [pts[i], pts[i + 1]], Z_TRACE)
+          add_polyline(ents, [pts[i], pts[i + 1]], z)
           i += 1
         end
       end
@@ -571,7 +572,7 @@ module Swept
 
     # Emit a true circular arc through run points about centre. Returns false
     # (caller falls back to edges) if SketchUp rejects the geometry.
-    def commit_arc(ents, run, centre)
+    def commit_arc(ents, run, centre, z = Z_TRACE)
       radius = run.sum { |p| Math.hypot(p[0] - centre[0], p[1] - centre[1]) } / run.size
       sweep = 0.0
       run.each_cons(2) do |a, b|
@@ -581,7 +582,7 @@ module Swept
       end
       return false if sweep.abs < 1e-6 || radius < 1e-6
 
-      c3 = Util.m_to_pt(centre, Z_TRACE)
+      c3 = Util.m_to_pt(centre, z)
       xaxis = Geom::Vector3d.new(run.first[0] - centre[0], run.first[1] - centre[1], 0)
       normal = Geom::Vector3d.new(0, 0, sweep.positive? ? 1 : -1)
       ents.add_arc(c3, xaxis, normal, radius * Util::IN_PER_M, 0.0, sweep.abs)
@@ -600,10 +601,25 @@ module Swept
       add_polyline(ents, arc_points_m(arc), Z_TRACE)
     end
 
+    # Wheel-contact marks are fixed points on each rigid unit, so they rotate
+    # about that unit's ICR just like the body — commit them with the same
+    # arc-fitting so tracks are real arcs on constant-steer legs.
     def commit_tracks(ents)
-      each_mark_trace do |poly|
-        add_polyline(ents, poly, Z_TRACK)
+      @frames.first[:fp].each_index do |u|
+        centres = unit_centres(@frames.map { |f| f[:fp][u][:body] })
+        n_marks = @frames.first[:fp][u][:marks].size
+        n_marks.times do |m|
+          poly = @frames.map { |f| f[:fp][u][:marks][m] }
+          commit_rail(ents, poly, centres, Z_TRACK)
+        end
       end
+    end
+
+    # Per-frame ICR of a unit (nil where the motion is straight), aligned with
+    # the frame list — the same centres used for the body rails.
+    def unit_centres(bodies)
+      n = bodies.size
+      Array.new(n) { |i| Util.pose_icr(bodies[[i, n - 2].min], bodies[[i, n - 2].min + 1]).first }
     end
 
     def commit_footprint_faces(ents)
